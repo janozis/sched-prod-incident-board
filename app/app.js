@@ -29,31 +29,55 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-function render() {
-  const rows = [...incidents.values()].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
-  list.innerHTML = rows
-    .map((i) => {
-      let action;
-      if (acked.has(i.id)) {
-        action = `<span data-testid="acked" class="acked">acked</span>`;
-      } else if (pendingAck === i.id) {
-        action = `<span class="confirm">
+// id -> row element. Rows are updated in place and new rows are inserted; existing rows are never rebuilt,
+// so a row under the pointer stays the same element while the list changes.
+const rowEls = new Map();
+
+function actionFor(i) {
+  if (acked.has(i.id)) return { key: 'acked', html: `<span data-testid="acked" class="acked">acked</span>` };
+  if (pendingAck === i.id) {
+    return {
+      key: 'confirm',
+      html: `<span class="confirm">
           <span data-testid="confirm">Ack ${escapeHtml(i.id)}?</span>
           <button data-testid="confirm-ack" data-id="${escapeHtml(i.id)}" type="button">Confirm</button>
           <button data-testid="confirm-cancel" type="button">Cancel</button>
-        </span>`;
-      } else {
-        action = `<button data-testid="ack" data-id="${escapeHtml(i.id)}" type="button">Ack</button>`;
-      }
-      return `<li data-testid="incident-row" data-id="${escapeHtml(i.id)}" class="row ${escapeHtml(i.severity)}">
-        <span class="id">${escapeHtml(i.id)}</span>
-        <span class="sev">${escapeHtml(i.severity)}</span>
-        <span class="what">${escapeHtml(i.service)} · ${escapeHtml(i.region)} · ${escapeHtml(i.summary)}</span>
-        <time datetime="${escapeHtml(i.openedAt)}">${escapeHtml(formatTime(i.openedAt))}</time>
-        ${action}
-      </li>`;
-    })
-    .join('');
+        </span>`,
+    };
+  }
+  return { key: 'ack', html: `<button data-testid="ack" data-id="${escapeHtml(i.id)}" type="button">Ack</button>` };
+}
+
+function createRow(i) {
+  const el = document.createElement('li');
+  el.dataset.testid = 'incident-row';
+  el.dataset.id = i.id;
+  el.className = `row ${i.severity}`;
+  el.innerHTML = `
+    <span class="id">${escapeHtml(i.id)}</span>
+    <span class="sev">${escapeHtml(i.severity)}</span>
+    <span class="what">${escapeHtml(i.service)} · ${escapeHtml(i.region)} · ${escapeHtml(i.summary)}</span>
+    <time datetime="${escapeHtml(i.openedAt)}">${escapeHtml(formatTime(i.openedAt))}</time>
+    <span class="action"></span>`;
+  return el;
+}
+
+function render() {
+  const rows = [...incidents.values()].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
+  rows.forEach((i, index) => {
+    let el = rowEls.get(i.id);
+    if (!el) {
+      el = createRow(i);
+      rowEls.set(i.id, el);
+      list.insertBefore(el, list.children[index] || null);
+    }
+    const action = actionFor(i);
+    const actionEl = el.querySelector('.action');
+    if (actionEl.dataset.key !== action.key) {
+      actionEl.dataset.key = action.key;
+      actionEl.innerHTML = action.html;
+    }
+  });
   empty.hidden = rows.length > 0;
 }
 
