@@ -8,6 +8,8 @@ const empty = document.querySelector('[data-testid="empty"]');
 const incidents = new Map();
 // id -> ackedAt, kept here so a re-render keeps the acked mark.
 const acked = new Map();
+// id of the incident waiting for confirmation, kept here so a re-render keeps the confirm.
+let pendingAck = null;
 let loaded = false;
 let polling = false;
 
@@ -31,9 +33,18 @@ function render() {
   const rows = [...incidents.values()].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
   list.innerHTML = rows
     .map((i) => {
-      const action = acked.has(i.id)
-        ? `<span data-testid="acked" class="acked">acked</span>`
-        : `<button data-testid="ack" data-id="${escapeHtml(i.id)}" type="button">Ack</button>`;
+      let action;
+      if (acked.has(i.id)) {
+        action = `<span data-testid="acked" class="acked">acked</span>`;
+      } else if (pendingAck === i.id) {
+        action = `<span class="confirm">
+          <span data-testid="confirm">Ack ${escapeHtml(i.id)}?</span>
+          <button data-testid="confirm-ack" data-id="${escapeHtml(i.id)}" type="button">Confirm</button>
+          <button data-testid="confirm-cancel" type="button">Cancel</button>
+        </span>`;
+      } else {
+        action = `<button data-testid="ack" data-id="${escapeHtml(i.id)}" type="button">Ack</button>`;
+      }
       return `<li data-testid="incident-row" data-id="${escapeHtml(i.id)}" class="row ${escapeHtml(i.severity)}">
         <span class="id">${escapeHtml(i.id)}</span>
         <span class="sev">${escapeHtml(i.severity)}</span>
@@ -65,16 +76,30 @@ async function refresh() {
 }
 
 list.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-testid="ack"]');
-  if (!button) return;
-  const id = button.dataset.id;
-  button.disabled = true;
+  // Ack opens the confirm for the row that was clicked; nothing is sent yet.
+  const ackButton = event.target.closest('[data-testid="ack"]');
+  if (ackButton) {
+    pendingAck = ackButton.dataset.id;
+    render();
+    return;
+  }
+  if (event.target.closest('[data-testid="confirm-cancel"]')) {
+    pendingAck = null;
+    render();
+    return;
+  }
+  // Confirm acks the id named in the confirm, not whatever row is under the pointer now.
+  const confirmButton = event.target.closest('[data-testid="confirm-ack"]');
+  if (!confirmButton) return;
+  const id = confirmButton.dataset.id;
+  confirmButton.disabled = true;
   try {
     const reply = await ack(id);
     acked.set(id, reply.ackedAt);
+    pendingAck = null;
     render();
   } catch (err) {
-    button.disabled = false;
+    confirmButton.disabled = false;
     console.error(err);
   }
 });
