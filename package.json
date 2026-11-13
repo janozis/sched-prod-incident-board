@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "serve": "npx --yes serve@14.2.4 app"
+    "serve": "npx --yes serve@14.2.4 app",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "wrangler": "^4.162.0"
   }
 }
